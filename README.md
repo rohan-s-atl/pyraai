@@ -1,376 +1,255 @@
 # Pyra
 
-Pyra is an AI-assisted wildfire command platform built around a live operational map, incident-centric resource coordination, and human-confirmed dispatch workflows.
+Pyra is an AI-assisted wildfire command intelligence platform built around a live operational map, incident-centered resource coordination, and dispatcher-controlled tactical workflows.
 
-It is designed as a decision-support system, not an automated dispatch engine. Pyra can rank units, score routes, generate briefings, suggest loadouts, surface shortages, and triage alerts, but dispatch and close-out actions remain explicitly human-controlled.
+It brings wildfire incidents, responding units, alerts, weather, air quality, terrain, routing, spread risk, fire perimeters, and operational recommendations into one command surface. The goal is to help command staff understand what is happening, compare response options, and coordinate resources with more context than a static dashboard can provide.
 
-Live Demo - https://pyra-ai.vercel.app/
+## Links
 
-## What Pyra Is
+- Pyra: https://pyra-ai.vercel.app/
 
-Pyra combines four layers into a single command surface:
+## Why Pyra
 
-1. Real-time incident state: fires, unit positions, alerts, containment, weather, AQI, terrain, and perimeters.
-2. Operational intelligence: spread-risk modeling, fire-behavior estimates, composite risk scoring, route safety scoring, and resource recommendation logic.
-3. AI assistance: tactical recommendation summaries, dispatch advice, alert triage, per-unit loadout suggestions, SITREP chat, operational briefings, handoff briefings, and AAR review.
-4. Command UX: a map-dominant interface with floating tactical panels for incident detail, engaged units, unified activity, and cross-incident prioritization.
+Wildfire response is a fast-moving coordination problem. Incident commanders and dispatchers have to reason across changing fire behavior, limited resources, route conditions, atmospheric risk, unit availability, and competing incidents. Those signals often live in separate systems, which makes it harder to maintain a shared operational picture.
 
-## Distribution
+Pyra is designed to collapse those signals into a single tactical workspace. The map is the center of the experience, while intelligence panels, unit recommendations, alert triage, briefings, and incident detail views stay close to the action. Instead of treating data feeds as isolated widgets, Pyra normalizes them into incident state, operational overlays, routing context, and recommendation logic.
 
-Pyra ships as both a containerized web application and a standalone desktop app.
+The result is a command tool focused on practical questions:
 
-### Desktop (Electron)
+- Which incidents need attention first?
+- Which units are best positioned for this fire?
+- What route posture and safety context matters?
+- What does weather, AQI, terrain, and spread risk imply?
+- What resources are already committed?
+- What briefing or handoff context should responders see?
 
-The Electron wrapper packages the FastAPI backend and React frontend into a single native application for macOS, Windows, and Linux. The desktop build:
+## Product Description
 
-- Spawns the Python/uvicorn backend as a child process on `127.0.0.1:8000`.
-- Loads the built frontend from `frontend/dist/` or a local Vite dev server in development.
-- Exposes IPC handlers (`get-api-key`, `set-api-key`, `restart-backend`) via a context-isolated preload so the Settings panel can manage the Anthropic API key and hot-restart the backend without touching the terminal.
-- Packages to `.dmg`/`.zip` on macOS, `.exe`/`.portable` on Windows, and `.AppImage` on Linux via `electron-builder`.
+Pyra combines four major layers into one command platform:
 
-Run in development:
+1. Live incident state: fires, unit positions, alerts, containment, weather, AQI, terrain, fire perimeters, and operational activity.
+2. Operational intelligence: fire-behavior estimates, composite risk scoring, spread-risk modeling, route safety scoring, and resource recommendation logic.
+3. AI assistance: dispatch advice, tactical summaries, alert triage, loadout suggestions, SITREP chat, operational briefings, handoff briefings, PDF reports, and post-incident review.
+4. Command UX: a map-first interface with floating panels for incident detail, engaged units, unified activity, unit status, and cross-incident prioritization.
 
-```
-npm run dev
-```
-
-Build a distributable:
-
-```
-npm run build
-```
-
-### Containerized
-
-The default runtime shape is four services via `docker-compose`:
-
-- `db` — PostgreSQL 16 for persistent operational state.
-- `migrate` — One-shot Alembic migration runner.
-- `backend` — FastAPI application serving operational APIs, scheduling, AI endpoints, and simulation/enrichment jobs.
-- `frontend` — Vite-built React application served behind a lightweight web container.
-
-An optional `osrm` service can be started for local routing instead of relying on the public OSRM endpoint.
+Pyra ships as both a web application and an Electron desktop application. The desktop shell packages the React frontend and FastAPI backend into a native app experience, with local backend process management and settings integration through Electron IPC.
 
 ## Interface Model
 
-The frontend is a map-first React/Leaflet application with four persistent operational surfaces:
+The frontend is a map-first React and Leaflet application. The map remains the main workspace, while panels act as tactical overlays instead of separate pages.
 
-- Top bar: system metrics, health state, overlay toggles, command view toggle, user/settings access.
-- Left sidebar: engaged units for the currently selected incident, filtered to active operational states (`en_route`, `on_scene`, `returning`).
-- Right panel: unified activity feed that merges alerts and timeline-style incident events, plus a system-wide unit roster.
-- Incident detail panel: the primary tactical workspace for a selected incident.
+Core interface surfaces include:
 
-The map remains the center of gravity. Panels are secondary, floating controls layered over the map rather than structural page columns.
+- Top bar: system metrics, health state, overlay toggles, command view access, and settings.
+- Left sidebar: engaged units for the selected incident, filtered to active operational states.
+- Right panel: unified activity feed combining alerts and timeline events, plus a system-wide unit roster.
+- Incident detail panel: the primary tactical workspace for selected incident analysis and action.
+- Command view: a multi-incident prioritization surface for comparing risk and allocation needs across the active incident set.
+- Settings panel: user-level configuration and Electron-specific API key management.
+
+The interaction model keeps tactical actions close to the map. Selecting a fire opens incident context, selecting a unit focuses route and status details, and overlays can be toggled to reveal evacuation zones, fire growth, perimeters, heatmaps, weather, water sources, and satellite context.
 
 ## Core Operational Surfaces
 
 ### Live Map
 
-The map renders:
+The live map renders severity-coded fire markers, smoothed unit motion, callsign labels, route previews, active operational routes, fire growth, risk overlays, evacuation zones, water sources, satellite imagery, and weather context.
 
-- Severity-coded fire markers with animated heat/glow treatment.
-- Smoothed unit motion with state-coded markers and click feedback.
-- Callsign labels at higher zoom levels.
-- Selected-unit route previews and per-unit operational routes.
-- Spread-risk overlay in fire/live map modes.
-- Toggleable overlays for fire growth, perimeters, heatmap, evac zones, water sources, satellite, and weather.
+Camera movement uses eased map transitions for selected fires, units, routes, and incident bounds. The map supports follow-style unit tracking and keeps route geometry visible as dispatch decisions are evaluated.
 
-Map interaction is designed around tactical confirmation:
+### Incident Detail
 
-- Clicking a fire selects the incident.
-- Clicking a unit focuses it and can enter follow/tracking mode.
-- Camera transitions use eased `flyTo`, `panTo`, and `flyToBounds` movements without changing routing logic.
-
-### Incident Detail Panel
-
-This is the deepest workflow surface in the app. For a selected incident, it exposes:
-
-- Recommendation profile and confidence.
-- Situation summary and fire intelligence metrics.
-- Recommended unit types, including filled-vs-unfilled status.
-- Already-deployed units actively committed to that incident.
-- Dispatch Intelligence, which ranks candidate units by fit and route posture.
-- Direct unit selection and route previewing.
-- Dispatch advice against current selection.
-- AI loadout configuration before dispatch approval.
-- SITREP chat, AI operational briefing, PDF report export, close-out workflow, and post-incident review.
+The incident detail panel provides the deepest operational workflow in Pyra. It brings together recommendation profiles, confidence levels, situation summaries, fire intelligence metrics, required unit types, committed units, candidate unit ranking, dispatch advice, loadout configuration, SITREP chat, briefing generation, report export, close-out workflow, and post-incident review.
 
 ### Activity System
 
-The right panel merges two previously separate surfaces into one activity model:
-
-- Alerts: severity-driven operational notifications with inline AI triage and dispatch workflow.
-- Timeline events: incident lifecycle and detection events presented in the same stream.
-
-This feed can collapse to a narrow floating rail and expand back into full tactical context. System units remain available in the lower section with status filters.
+The activity feed merges alerts and incident timeline events into a single operational stream. Alerts include severity, incident association, acknowledgement state, and AI triage. Timeline events capture incident lifecycle updates and detection activity. The panel can collapse into a narrow rail to preserve map space while keeping new activity visible.
 
 ### Command View
 
-The command panel is a multi-incident prioritization surface. It ranks incidents using composite risk logic and supports higher-level allocation decisions across the incident set.
-
-### Settings Panel
-
-The settings panel surfaces user-level configuration. In the Electron build it also exposes Anthropic API key management and a backend restart trigger via IPC, so the app can be fully configured without opening a terminal.
+Command view ranks incidents using composite risk logic and presents a broader allocation picture across the system. It is built for comparing active fires, understanding relative priority, and deciding where scarce resources should move next.
 
 ## Intelligence and Decision Logic
 
-Pyra uses both deterministic scoring and AI-assisted interpretation.
+Pyra uses deterministic scoring engines together with AI-assisted interpretation.
 
-### Deterministic engines
+### Deterministic Engines
 
-- `recommendation_engine.py`
-  Produces incident recommendations, loadout profiles, unit type demand, confidence, and tactical notes from incident attributes and route context.
+- `recommendation_engine.py` produces incident recommendations, loadout profiles, unit type demand, confidence, and tactical notes from incident attributes and route context.
+- `unit_selection.py` converts recommendation demand into actual candidate units by subtracting committed resources, ranking available units, and reporting shortfalls.
+- `route_safety.py` and `routing.py` build route geometry, assign route safety state, and normalize route reasoning.
+- `fire_behavior.py`, `composite_risk.py`, and `spread_risk.py` estimate fire behavior, composite incident risk, and directional spread posture from weather, terrain, AQI, and incident state.
 
-- `unit_selection.py`
-  Converts recommendation demand into actual candidate units by subtracting already-committed resources, ranking available units, and reporting shortfalls.
+### Simulation Engine
 
-- `route_safety.py` and `routing.py`
-  Build route geometry, assign route safety state, and normalize route-related reasoning. Routing uses a multi-tier fallback chain: local OSRM → public OSRM-A → public OSRM-B → ORS. Each endpoint is health-tracked with exponential backoff (60 s → 120 s → 240 s, capped at 300 s).
+The backend continuously evolves operational state so the UI behaves like a moving command picture rather than a manually refreshed dashboard.
 
-- `fire_behavior.py`, `composite_risk.py`, `spread_risk.py`
-  Estimate fire behavior, composite incident risk, and directional spread posture from weather, terrain, AQI, and incident state.
+Simulation mechanics include:
 
-### Simulation engine
+- Per-incident containment progression based on on-scene unit contribution.
+- Weather variation around base wind and humidity readings.
+- Weather-driven alert generation for dangerous wind and humidity conditions.
+- Alert pruning to keep the operational feed usable.
+- Unit movement, route updates, and incident state refreshes.
 
-The backend continuously evolves incident state. Key mechanics:
+### AI-Assisted Flows
 
-- **Containment**: tracked per-incident with a 12-minute hold at 100% before slow decay begins. Each on-scene unit contributes `+0.06` containment per tick; 2–3 full dispatch batches bring a typical incident to 100% in under 10 minutes.
-- **Weather variation**: wind and humidity fluctuate each tick (`±2.0 mph`, `±1.5 %`) around a base reading.
-- **Weather alerts**: automatic alerts fire when wind exceeds 25 mph or humidity drops below 12%.
-- **Alert pruning**: unacknowledged alerts are capped at 15 per incident, acknowledged at 50, and 500 globally, to prevent feed saturation.
+Anthropic-backed endpoints are used for reasoning-heavy workflows:
 
-### AI-assisted flows
+- Dispatch advice for selected unit sets.
+- Per-unit loadout recommendations from structured equipment data.
+- Alert triage summaries.
+- Operational incident briefings.
+- Handoff briefings.
+- SITREP chat.
+- Post-incident AAR review.
 
-Anthropic-backed endpoints are used where freeform reasoning is useful:
-
-- Dispatch advice: assess whether a selected deployment is optimal, adequate, or suboptimal.
-- Loadout generation: recommend per-unit fluid/equipment configuration from a structured equipment database covering engines, hand crews, dozers, water tenders, helicopters, air tankers, command units, and rescue units. Results are LRU-cached.
-- Alert triage: summarize operational significance and likely response posture. Results are TTL-cached (120 s) and keyed to incident state.
-- Briefing generation: operational incident briefing and handoff briefing.
-- SITREP chat: interactive incident Q&A.
-- AAR review: post-incident evaluation.
-
-Pyra also includes non-AI fallbacks or rule-based support where appropriate, so the interface degrades gracefully when an AI call fails or a key is absent.
+Caching is used for repeated AI workflows such as loadout generation and alert triage, keeping the interface responsive while preserving context-aware output.
 
 ## Data Sources and Enrichment
 
-Pyra fuses internal state with multiple external feeds:
+Pyra fuses internal operational state with external data feeds:
 
-- Open-Meteo: weather enrichment.
-- Open-Meteo AQ: AQI enrichment with alert severity mapping.
-- Open-Elevation: terrain enrichment.
-- NASA FIRMS: hotspot ingestion and satellite-aware incident updates.
-- Overpass / OpenStreetMap: water sources and road-derived context.
-- NIFC ArcGIS: fire perimeters.
-- OSRM: road routing, with optional local OSRM runtime and public fallback chain.
+- Open-Meteo for weather enrichment.
+- Open-Meteo AQ for air quality enrichment.
+- Open-Elevation for terrain data.
+- NASA FIRMS for hotspot ingestion and satellite-aware incident updates.
+- Overpass and OpenStreetMap for water sources and road-derived context.
+- NIFC ArcGIS for fire perimeters.
+- OSRM for road routing.
 
-These are not presented as isolated widgets. They are normalized into incident state, overlays, routing, and recommendation logic.
+These feeds are normalized into incident attributes, map overlays, route context, recommendation scoring, alert generation, and briefing material.
 
-## Backend
+## Technical Breakdown
 
-The backend is a FastAPI application organized by operational concern, with `slowapi` rate limiting on sensitive endpoints.
+### Architecture
 
-### API domains
+Pyra is organized as a full-stack application with three primary layers:
 
-- `/api/auth` — Authentication and current-user identity.
-- `/api/incidents` — Incident state, close-out checklist, and closure actions.
-- `/api/units` — Unit inventory and location updates.
-- `/api/alerts` — Alert lifecycle, acknowledgement, clearing, and statistics.
-- `/api/dispatch` — Human-confirmed dispatch approval and alert dispatch.
-- `/api/recommendations` — Dispatch intelligence and feedback capture.
-- `/api/dispatch-advice` — AI assessment of a proposed dispatch selection.
-- `/api/dispatch/loadout` — AI loadout recommendation and fallback handling.
-- `/api/intelligence` — Fire behavior, spread risk, recommendation summary, alert recommendation, and intelligence aggregation.
-- `/api/routes` — Route safety and route-related metadata.
-- `/api/water-sources` — Water source discovery and operational support data.
-- `/api/multi-incident` — Cross-incident prioritization.
-- `/api/briefing` — Operational briefing and handoff generation.
-- `/api/chat` — SITREP chat stream.
-- `/api/review` — Post-incident review stream.
-- `/api/report` — PDF incident report export.
-- `/api/audit` — Audit logging with cryptographic checksum integrity verification and CSV export. Verification is commander-only.
-- `/api/ingestion` — Manual or scheduled ingestion status.
-- `/health` — Multi-component health check (database pool, AI key readiness).
+- `backend/`: FastAPI application for APIs, persistence, scheduling, simulation, enrichment, AI workflows, audit logging, and operational services.
+- `frontend/`: React and Vite application for the map-first command interface.
+- `electron/`: Native desktop wrapper that starts the backend, loads the frontend, and exposes secure IPC for local settings and backend restart control.
 
-### Background jobs
+The backend uses PostgreSQL for persistent operational state, SQLAlchemy for data modeling, Alembic for migrations, APScheduler for recurring jobs, and SlowAPI for rate limiting sensitive endpoints.
 
-Pyra is not a static CRUD backend. It continuously evolves operational state via scheduled services:
+### Backend API Domains
+
+- `/api/auth`: authentication and current-user identity.
+- `/api/incidents`: incident state, close-out checklist, and closure actions.
+- `/api/units`: unit inventory and location updates.
+- `/api/alerts`: alert lifecycle, acknowledgement, clearing, and statistics.
+- `/api/dispatch`: dispatch approval and alert dispatch.
+- `/api/recommendations`: dispatch intelligence and feedback capture.
+- `/api/dispatch-advice`: AI assessment of proposed dispatch selections.
+- `/api/dispatch/loadout`: AI loadout recommendation and fallback handling.
+- `/api/intelligence`: fire behavior, spread risk, recommendation summaries, alert recommendations, and intelligence aggregation.
+- `/api/routes`: route safety and route-related metadata.
+- `/api/water-sources`: water source discovery and operational support data.
+- `/api/multi-incident`: cross-incident prioritization.
+- `/api/briefing`: operational briefing and handoff generation.
+- `/api/chat`: SITREP chat stream.
+- `/api/review`: post-incident review stream.
+- `/api/report`: PDF incident report export.
+- `/api/audit`: audit log viewing, checksum verification, and CSV export.
+- `/api/ingestion`: manual and scheduled ingestion status.
+- `/health`: backend health and component readiness.
+
+### Background Jobs
+
+Scheduled backend services keep operational state current:
 
 - simulation updates
-- route generation / refresh
+- route generation and refresh
 - weather enrichment
 - AQI enrichment
-- FIRMS ingest
+- FIRMS ingestion
 - terrain enrichment
-- road / access enrichment
+- road and access enrichment
 
-This gives the UI a continuously moving command picture instead of a manually refreshed dashboard.
+### Frontend Components
 
-## Frontend
+Primary frontend components include:
 
-The frontend is a React 19 + Vite 8 application using React-Leaflet 5 for the operational map.
+- `App.jsx`: top-level orchestration, polling, auth gate, panel composition, keyboard shortcuts, and layout geometry.
+- `IncidentMap.jsx`: map rendering, markers, camera control, route overlays, follow mode, and map legend.
+- `LeftSidebar.jsx`: incident-specific engaged-unit rail.
+- `RightPanel.jsx`: unified activity feed and system unit roster.
+- `IncidentDetailPanel.jsx`: tactical incident workspace.
+- `DispatchRecommendations.jsx`: candidate ranking and dispatch selection flow.
+- `LoadoutConfigurator.jsx`: per-unit loadout configuration.
+- `TopBar.jsx`: metrics, controls, and overlay toggles.
+- `SettingsPanel.jsx`: user settings and Electron API key controls.
+- `AuditLogPanel.jsx`: audit log viewing and integrity verification.
+- `PostIncidentReview.jsx`: streaming AAR surface.
+- `SitrepChat.jsx`: interactive incident Q&A.
+- `WeatherPanel.jsx`: atmospheric conditions panel.
+- `Toast.jsx`: operational feedback notifications.
 
-### Primary components
+Map overlay components include evacuation zones, fire growth, fire perimeters, composite risk heatmaps, spread risk, and water sources.
 
-- [App.jsx](frontend/src/App.jsx)
-  Top-level orchestration, polling, auth gate, panel composition, keyboard shortcuts, and layout geometry.
+### Roles and Permissions
 
-- [IncidentMap.jsx](frontend/src/components/IncidentMap.jsx)
-  Core map rendering, marker systems, map camera control, route overlays, follow mode, and map legend.
+Pyra uses role-based access control:
 
-- [LeftSidebar.jsx](frontend/src/components/LeftSidebar.jsx)
-  Incident-specific engaged-unit rail with compact/scroll behavior.
+- `viewer`: read access to operational data.
+- `dispatcher`: dispatch operations, alert acknowledgement, and briefing-related actions.
+- `commander`: full operational access, including close-out, review, and audit verification workflows.
 
-- [RightPanel.jsx](frontend/src/components/RightPanel.jsx)
-  Unified activity feed and system unit roster.
+### Runtime Stack
 
-- [IncidentDetailPanel.jsx](frontend/src/components/IncidentDetailPanel.jsx)
-  Tactical incident workspace.
+Desktop:
 
-- [DispatchRecommendations.jsx](frontend/src/components/DispatchRecommendations.jsx)
-  Dispatch intelligence candidate ranking and selection flow.
+- Electron 28
+- electron-builder 24
 
-- [LoadoutConfigurator.jsx](frontend/src/components/LoadoutConfigurator.jsx)
-  Per-unit resource/loadout configuration prior to dispatch approval.
+Backend:
 
-- [TopBar.jsx](frontend/src/components/TopBar.jsx)
-  System metrics and overlay toggles.
+- FastAPI 0.115.0
+- SQLAlchemy 2.0.36
+- Pydantic 2.9.2
+- APScheduler 3.10.4
+- Anthropic SDK 0.40.0
+- Alembic 1.13.3
+- SlowAPI 0.1.9
+- PostgreSQL 16
 
-- [SettingsPanel.jsx](frontend/src/components/SettingsPanel.jsx)
-  User settings; in the Electron build exposes API key management and backend restart.
+Frontend:
 
-- [AuditLogPanel.jsx](frontend/src/components/AuditLogPanel.jsx)
-  Audit log viewer with integrity verification status and CSV export trigger.
-
-- [PostIncidentReview.jsx](frontend/src/components/PostIncidentReview.jsx)
-  Streaming post-incident AAR surface.
-
-- [SitrepChat.jsx](frontend/src/components/SitrepChat.jsx)
-  Interactive SITREP Q&A chat.
-
-- [WeatherPanel.jsx](frontend/src/components/WeatherPanel.jsx)
-  Atmospheric conditions overlay panel.
-
-- [Toast.jsx](frontend/src/components/Toast.jsx)
-  System-wide toast notification surface for operational feedback.
-
-### Map overlays
-
-- `EvacZonesOverlay.jsx` — Evacuation zone polygons.
-- `FireGrowthOverlay.jsx` — Fire growth projection.
-- `FirePerimetersOverlay.jsx` — NIFC perimeter boundaries.
-- `RiskHeatmapOverlay.jsx` — Composite risk heatmap.
-- `SpreadRiskOverlay.jsx` — Directional spread risk.
-- `WaterSourcesOverlay.jsx` — Water source markers.
-
-### Interaction model
-
-The frontend intentionally avoids hard page segmentation:
-
-- Panels are floating and glass-tinted.
-- Hover and press interactions are standardized.
-- Alerts and timeline events are unified.
-- Collapsible surfaces minimize map obstruction.
-- Key tactical actions stay one or two steps from the map.
-- Toast notifications provide immediate feedback on dispatch, alert, and system events.
-
-## Roles and Permissions
-
-Pyra enforces role-based access:
-
-- `viewer` — Read-only access to operational data.
-- `dispatcher` — Dispatch operations, alert acknowledgement, and briefing-related actions.
-- `commander` — Full operational access, including higher-authority workflows such as close-out, review, and audit log verification.
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|---|---|
-| `Esc` | Close panels / clear active tactical surfaces |
-| `C` | Toggle command view |
-| `M` | Toggle satellite layer |
-| `1` | Toggle evac zones |
-| `2` | Toggle fire growth |
-| `3` | Toggle perimeters |
-| `4` | Toggle heat map |
-| `5` | Toggle satellite layer |
-| `6` | Toggle weather |
-| `7` | Toggle water sources |
-| `Enter` | Confirm actions or send chat where applicable |
+- React 19.2.4
+- React DOM 19.2.4
+- React-Leaflet 5.0.0
+- Leaflet 1.9.4
+- Vite 8.0.0
+- Tailwind CSS 4.2.1
 
 ## Repository Layout
 
 ```text
-PyraAI/
-├── electron/
-│   ├── main.js
-│   └── preload.js
-├── backend/
-│   ├── alembic/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── ext/
-│   │   ├── intelligence/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   ├── scripts/
-│   │   ├── services/
-│   │   └── utils/
-│   └── tests/
-├── frontend/
-│   └── src/
-│       ├── api/
-│       ├── components/
-│       ├── context/
-│       ├── services/
-│       └── utils/
-├── package.json
-├── docker-compose.yml
-└── README.md
+Pyra/
+|-- electron/
+|   |-- main.js
+|   `-- preload.js
+|-- backend/
+|   |-- alembic/
+|   |-- app/
+|   |   |-- api/
+|   |   |-- core/
+|   |   |-- ext/
+|   |   |-- intelligence/
+|   |   |-- models/
+|   |   |-- schemas/
+|   |   |-- scripts/
+|   |   |-- services/
+|   |   `-- utils/
+|   `-- tests/
+|-- frontend/
+|   `-- src/
+|       |-- api/
+|       |-- components/
+|       |-- context/
+|       |-- services/
+|       `-- utils/
+|-- package.json
+|-- docker-compose.yml
+`-- README.md
 ```
-
-## Runtime Stack
-
-### Desktop
-
-- Electron `28`
-- electron-builder `24`
-
-### Backend
-
-- FastAPI `0.115.0`
-- SQLAlchemy `2.0.36`
-- Pydantic `2.9.2`
-- APScheduler `3.10.4`
-- Anthropic SDK `0.40.0`
-- Alembic `1.13.3`
-- slowapi `0.1.9`
-- PostgreSQL 16
-
-### Frontend
-
-- React `19.2.4`
-- React DOM `19.2.4`
-- React-Leaflet `5.0.0`
-- Leaflet `1.9.4`
-- Vite `8.0.0`
-- Tailwind CSS `4.2.1`
-
-## Deployment Notes
-
-Pyra expects a backend secret, database connection, and Anthropic API key for full capability. A NASA FIRMS key enables hotspot ingestion. If a local OSRM container is present, the backend targets it for routing; otherwise a public OSRM fallback chain is used automatically.
-
-In the Electron desktop build, the Anthropic API key can be set and persisted via the Settings panel without touching a `.env` file directly.
-
-## Operational Boundary
-
-Pyra is built to support wildfire command reasoning, not replace it.
-
-- It can recommend.
-- It can rank.
-- It can summarize.
-- It can project.
-- It does not autonomously dispatch or close incidents.
-
-That boundary is part of the system design, not just a UI warning.
