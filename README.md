@@ -6,7 +6,7 @@ It brings wildfire incidents, responding units, alerts, weather, air quality, te
 
 ## Links
 
-- Pyra: https://pyra-ai.vercel.app/
+Pyra: https://pyra-ai.vercel.app/
 
 ## Why Pyra
 
